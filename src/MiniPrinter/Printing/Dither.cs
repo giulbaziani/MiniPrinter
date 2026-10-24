@@ -2,7 +2,7 @@ namespace MiniPrinter.Printing;
 
 public static class Dither
 {
-    public static LabelBitmap To1Bpp(int width, int height, byte[] gray, bool floydSteinberg = true)
+    public static LabelBitmap To1Bpp(int width, int height, byte[] gray, bool floydSteinberg = true, byte threshold = 128)
     {
         var buffer = new float[gray.Length];
         for (var i = 0; i < gray.Length; i++)
@@ -17,7 +17,7 @@ public static class Dither
             {
                 var i = y * width + x;
                 var old = buffer[i];
-                var dark = old < 128;
+                var dark = old < threshold;
                 var neu = dark ? 0f : 255f;
                 if (floydSteinberg)
                 {

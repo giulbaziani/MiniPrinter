@@ -16,7 +16,19 @@ public sealed class LabelContent
     public bool BoldTitle { get; set; } = true;
     public int TitleSize { get; set; } = 28;
     public int BodySize { get; set; } = 18;
+    public bool BoldBody { get; set; }
+    public bool Italic { get; set; }
+    public bool Underline { get; set; }
     public TextAlignment Align { get; set; } = TextAlignment.Center;
+    public List<TextSpan> BodySpans { get; set; } = [];
+}
+
+public sealed class TextSpan
+{
+    public string Text { get; set; } = "";
+    public bool Bold { get; set; }
+    public bool Italic { get; set; }
+    public bool Underline { get; set; }
 }
 
 public static class LabelRenderer
@@ -35,6 +47,9 @@ public static class LabelRenderer
         width = (width + 7) & ~7;
 
         var dv = new DrawingVisual();
+        RenderOptions.SetEdgeMode(dv, EdgeMode.Aliased);
+        TextOptions.SetTextFormattingMode(dv, TextFormattingMode.Display);
+        TextOptions.SetTextRenderingMode(dv, TextRenderingMode.Aliased);
         using (var dc = dv.RenderOpen())
         {
             dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, width, height));
@@ -44,7 +59,7 @@ public static class LabelRenderer
 
             if (!string.IsNullOrWhiteSpace(content.Title))
             {
-                y += DrawText(dc, content.Title, pad, y, maxW, content.TitleSize, content.BoldTitle, content.Align);
+                y += DrawText(dc, content.Title, pad, y, maxW, content.TitleSize, content.BoldTitle, content.Italic, content.Underline, content.Align);
                 y += 4;
             }
 
@@ -57,9 +72,9 @@ public static class LabelRenderer
                 y += qrSize + 6;
             }
 
-            if (!string.IsNullOrWhiteSpace(content.Body))
+            if (!string.IsNullOrWhiteSpace(content.Body) || content.BodySpans.Count > 0)
             {
-                y += DrawText(dc, content.Body, pad, y, maxW, content.BodySize, false, content.Align);
+                y += DrawText(dc, content.Body, pad, y, maxW, content.BodySize, content.BoldBody, content.Italic, content.Underline, content.Align, content.BodySpans);
                 y += 4;
             }
 
@@ -70,13 +85,13 @@ public static class LabelRenderer
                 {
                     DrawCode128(dc, content.BarcodePayload, pad, y, maxW, barH);
                     y += barH + 2;
-                    DrawText(dc, content.BarcodePayload, pad, y, maxW, 12, false, TextAlignment.Center);
+                    DrawText(dc, content.BarcodePayload, pad, y, maxW, 12, true, false, false, TextAlignment.Center);
                 }
             }
 
             if (!string.IsNullOrWhiteSpace(content.Footer))
             {
-                DrawText(dc, content.Footer, pad, height - pad - content.BodySize, maxW, Math.Max(12, content.BodySize - 4), false, content.Align);
+                DrawText(dc, content.Footer, pad, height - pad - content.BodySize, maxW, Math.Max(12, content.BodySize - 4), content.BoldBody, content.Italic, false, content.Align);
             }
         }
 
@@ -93,7 +108,54 @@ public static class LabelRenderer
             gray[i] = (byte)((pixels[o + 2] * 30 + pixels[o + 1] * 59 + pixels[o] * 11) / 100);
         }
 
-        var bmp = Dither.To1Bpp(width, height, gray);
+        var bmp = Dither.To1Bpp(width, height, gray, floydSteinberg: false, threshold: 248);
+        return (bmp, bmp.ToBitmapSource());
+    }
+
+    public static (LabelBitmap Bitmap, BitmapSource Preview) RenderImage(
+        string path,
+        double widthMm,
+        double heightMm,
+        int dpi,
+        int maxWidthDots = 384)
+    {
+        var width = Math.Max(8, MmToDots(widthMm, dpi));
+        var height = Math.Max(8, MmToDots(heightMm, dpi));
+        if (maxWidthDots > 0)
+            width = Math.Min(width, maxWidthDots);
+        width = (width + 7) & ~7;
+
+        var img = new BitmapImage();
+        img.BeginInit();
+        img.CacheOption = BitmapCacheOption.OnLoad;
+        img.UriSource = new Uri(path);
+        img.EndInit();
+        img.Freeze();
+
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, width, height));
+            var scale = Math.Min(width / (double)img.PixelWidth, height / (double)img.PixelHeight);
+            var dw = img.PixelWidth * scale;
+            var dh = img.PixelHeight * scale;
+            dc.DrawImage(img, new Rect((width - dw) / 2, (height - dh) / 2, dw, dh));
+        }
+
+        var rtb = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        rtb.Freeze();
+
+        var pixels = new byte[width * height * 4];
+        rtb.CopyPixels(pixels, width * 4, 0);
+        var gray = new byte[width * height];
+        for (var i = 0; i < gray.Length; i++)
+        {
+            var o = i * 4;
+            gray[i] = (byte)((pixels[o + 2] * 30 + pixels[o + 1] * 59 + pixels[o] * 11) / 100);
+        }
+
+        var bmp = Dither.To1Bpp(width, height, gray, floydSteinberg: true, threshold: 128);
         return (bmp, rtb);
     }
 
@@ -107,14 +169,23 @@ public static class LabelRenderer
         double maxWidth,
         int size,
         bool bold,
-        TextAlignment align)
+        bool italic,
+        bool underline,
+        TextAlignment align,
+        IReadOnlyList<TextSpan>? spans = null)
     {
+        if (spans is { Count: > 0 })
+            text = string.Concat(spans.Select(s => s.Text));
+        if (string.IsNullOrEmpty(text)) return 0;
+
         var ft = new FormattedText(
             text,
             CultureInfo.GetCultureInfo("ka-GE"),
             FlowDirection.LeftToRight,
-            new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal,
-                bold ? FontWeights.Bold : FontWeights.Normal, FontStretches.Normal),
+            new Typeface(new FontFamily("Segoe UI"),
+                italic ? FontStyles.Italic : FontStyles.Normal,
+                bold ? FontWeights.Bold : FontWeights.Normal,
+                FontStretches.Normal),
             size,
             Brushes.Black,
             1.0)
@@ -122,7 +193,35 @@ public static class LabelRenderer
             MaxTextWidth = maxWidth,
             TextAlignment = align
         };
-        dc.DrawText(ft, new Point(x, y));
+        if (spans is { Count: > 0 })
+        {
+            var i = 0;
+            foreach (var s in spans)
+            {
+                var n = s.Text.Length;
+                if (n <= 0) continue;
+                if (s.Bold) ft.SetFontWeight(FontWeights.Bold, i, n);
+                else ft.SetFontWeight(FontWeights.Normal, i, n);
+                if (s.Italic) ft.SetFontStyle(FontStyles.Italic, i, n);
+                if (s.Underline) ft.SetTextDecorations(TextDecorations.Underline, i, n);
+                i += n;
+            }
+        }
+        var origin = new Point(Math.Floor(x), Math.Floor(y));
+        var geo = ft.BuildGeometry(origin);
+        geo.Freeze();
+        dc.DrawGeometry(Brushes.Black, null, geo);
+        if (underline && spans is not { Count: > 0 } && ft.Width > 0)
+        {
+            var left = align switch
+            {
+                TextAlignment.Center => x + (maxWidth - ft.Width) / 2,
+                TextAlignment.Right => x + maxWidth - ft.Width,
+                _ => x
+            };
+            var uy = Math.Floor(y + ft.Baseline + 2);
+            dc.DrawRectangle(Brushes.Black, null, new Rect(Math.Floor(left), uy, Math.Ceiling(ft.Width), 2));
+        }
         return ft.Height;
     }
 

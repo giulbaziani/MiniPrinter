@@ -21,7 +21,7 @@ public sealed class LuckJingleProtocol : IPrintProtocol
         var density = (byte)Math.Clamp(job.Density, 1, 5);
         ms.Write([0x10, 0xFF, 0x10, 0x00, density, 0x00]);
         EscPosProtocol.WriteRaster(ms, job.Bitmap);
-        ms.Write([0x1B, 0x4A, (byte)Math.Clamp(Math.Max(job.FeedDots, 40), 0, 255)]);
+        ms.Write([0x1B, 0x4A, (byte)Math.Clamp(Math.Max(job.FeedDots, 24), 0, 255)]);
         if (job.Paper == PaperKind.Gap)
             ms.Write([0x1D, 0x0C]);
         ms.Write([0x10, 0xFF, 0xF1, 0x45]);

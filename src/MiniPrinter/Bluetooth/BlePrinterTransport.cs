@@ -11,8 +11,9 @@ public sealed class BlePrinterTransport : IPrinterTransport
     private readonly BluetoothLEDevice _device;
     private readonly GattCharacteristic _write;
     private readonly GattCharacteristic? _credit;
-    private int _credits = 4;
-    private readonly SemaphoreSlim _creditGate = new(1, 1);
+    private int _credits = 8;
+    private volatile bool _creditProtocolLive;
+    private readonly SemaphoreSlim _creditGate = new(0, 1);
 
     private BlePrinterTransport(
         BluetoothLEDevice device,
@@ -118,12 +119,9 @@ public sealed class BlePrinterTransport : IPrinterTransport
         var reader = DataReader.FromBuffer(args.CharacteristicValue);
         var bytes = new byte[reader.UnconsumedBufferLength];
         reader.ReadBytes(bytes);
+        _creditProtocolLive = true;
         if (bytes.Length >= 2 && bytes[0] == 0x01)
-            Interlocked.Exchange(ref _credits, bytes[1]);
-        else if (bytes.Length >= 3 && bytes[0] == 0x02)
-        {
-            // MTU announcement — ignore, we already chunk conservatively
-        }
+            Interlocked.Exchange(ref _credits, Math.Max(1, (int)bytes[1]));
         try { _creditGate.Release(); } catch (SemaphoreFullException) { /* already open */ }
     }
 
@@ -135,13 +133,18 @@ public sealed class BlePrinterTransport : IPrinterTransport
         for (var i = 0; i < data.Length; i += chunkSize)
         {
             ct.ThrowIfCancellationRequested();
-            if (_credit is not null)
+            if (_credit is not null && _creditProtocolLive)
             {
-                while (Volatile.Read(ref _credits) <= 0)
+                var waited = 0;
+                while (Volatile.Read(ref _credits) <= 0 && waited < 500)
                 {
-                    await _creditGate.WaitAsync(ct);
+                    if (!await _creditGate.WaitAsync(100, ct))
+                        waited += 100;
                 }
-                Interlocked.Decrement(ref _credits);
+                if (Volatile.Read(ref _credits) > 0)
+                    Interlocked.Decrement(ref _credits);
+                else
+                    Interlocked.Exchange(ref _credits, 4);
             }
 
             var n = Math.Min(chunkSize, data.Length - i);

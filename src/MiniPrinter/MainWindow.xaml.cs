@@ -1,8 +1,14 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Markup;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using Microsoft.Win32;
 using MiniPrinter.Bluetooth;
 using MiniPrinter.Localization;
 using MiniPrinter.Printing;
@@ -14,7 +20,8 @@ public partial class MainWindow : Window
 {
     private readonly List<PrinterDeviceInfo> _allDevices = [];
     private readonly ObservableCollection<PrinterDeviceInfo> _devices = [];
-    private readonly ObservableCollection<TemplateRow> _templates = [];
+    private readonly ObservableCollection<TemplateRow> _layouts = [];
+    private readonly ObservableCollection<TemplateRow> _saved = [];
     private readonly DeviceScanner _scanner = new();
     private readonly AppSettings _settings;
     private IPrinterTransport? _transport;
@@ -22,6 +29,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _scanCts;
     private bool _suppressUi;
     private string _lastSample = "";
+    private string? _imagePath;
 
     public MainWindow()
     {
@@ -30,7 +38,10 @@ public partial class MainWindow : Window
         InitializeComponent();
         DeviceList.ItemsSource = _devices;
         DeviceList.DisplayMemberPath = nameof(PrinterDeviceInfo.Name);
-        TemplateList.ItemsSource = _templates;
+        foreach (var t in LabelTemplates.BuiltIn)
+            _layouts.Add(new TemplateRow(t));
+        LayoutList.ItemsSource = _layouts;
+        SavedList.ItemsSource = _saved;
         _scanner.DeviceFound += d => Dispatcher.Invoke(() =>
         {
             if (_allDevices.Any(x => x.Id == d.Id || (!x.IsSerial && !d.IsSerial && x.BluetoothAddress == d.BluetoothAddress)))
@@ -41,11 +52,13 @@ public partial class MainWindow : Window
             RefreshDeviceList();
         });
         BodyBox.TextChanged += Preview_Changed;
-        ReloadTemplates(_settings.LastTemplateId);
+        BodyBox.Document.LineHeight = 1.15;
+        ReloadSaved(_settings.LastTemplateId);
         WidthBox.Text = _settings.WidthMm.ToString(CultureInfo.InvariantCulture);
         HeightBox.Text = _settings.HeightMm.ToString(CultureInfo.InvariantCulture);
         ApplyLanguage();
-        PaperBox.SelectedIndex = 1;
+        FontSizeBox.SelectedIndex = 4;
+        PaperBox.SelectedIndex = 0;
         ProtocolBox.SelectedIndex = 1;
         SetDisconnectedUi();
         Loaded += (_, _) => RefreshPreview();
@@ -59,15 +72,17 @@ public partial class MainWindow : Window
         Loc.Changed += () => Dispatcher.Invoke(ApplyLanguage);
     }
 
-    private void ReloadTemplates(string? selectId)
+    private void ReloadSaved(string? selectId)
     {
-        _templates.Clear();
-        foreach (var t in LabelTemplates.BuiltIn)
-            _templates.Add(new TemplateRow(t));
+        _saved.Clear();
         foreach (var t in TemplateStore.Load())
-            _templates.Add(new TemplateRow(t));
-        TemplateList.SelectedItem = _templates.FirstOrDefault(x => x.Model.Id == selectId) ?? _templates.FirstOrDefault();
+            _saved.Add(new TemplateRow(t));
+        if (selectId is not null)
+            SavedList.SelectedItem = _saved.FirstOrDefault(x => x.Model.Id == selectId);
     }
+
+    private TemplateRow? CurrentLayout => LayoutList.SelectedItem as TemplateRow;
+    private TemplateRow? CurrentSaved => SavedList.SelectedItem as TemplateRow;
 
     private void ApplyLanguage()
     {
@@ -80,6 +95,9 @@ public partial class MainWindow : Window
         ScanButton.Content = WithIcon("\uE721", Loc.T("scan"));
         ConnectButton.Content = WithIcon("\uE8FB", Loc.T("connect"));
         DisconnectButton.Content = WithIcon("\uE8F8", Loc.T("disconnect"));
+        DisconnectSavedButton.Content = WithIcon("\uE8F8", Loc.T("disconnect"));
+        BackToSavedButton.Content = WithIcon("\uE8F1", Loc.T("backSaved"));
+        ShowDevicesButton.Content = WithIcon("\uE702", Loc.T("showDevices"));
         DevicesTitle.Text = Loc.T("devices");
         ShowAllBox.Content = Loc.T("showAll");
         FilterHint.Text = Loc.T("filter.hint");
@@ -88,8 +106,17 @@ public partial class MainWindow : Window
         TemplatesHint.Text = Loc.T("templates.hint");
         TextTitle.Text = Loc.T("text");
         SaveTemplateButton.Content = WithIcon("\uE74E", Loc.T("saveTemplate"));
-        DeleteTemplateButton.Content = WithIcon("\uE74D", Loc.T("deleteTemplate"));
+        DeleteSavedButton.Content = WithIcon("\uE74D", Loc.T("deleteTemplate"));
         PrintButton.Content = WithIcon("\uE749", Loc.T("print"));
+        OpenImageButton.Content = WithIcon("\uE8B9", Loc.T("image.open"));
+        ClearImageButton.Content = WithIcon("\uE74D", Loc.T("image.clear"));
+        ImageHint.Text = string.IsNullOrEmpty(_imagePath) ? Loc.T("image.hint") : Loc.T("image.loaded", Path.GetFileName(_imagePath));
+        IssueButton.Content = WithIcon("\uE713", Loc.T("issue"));
+        NeedPrinterTitle.Text = Loc.T("need.printer");
+        NeedPrinterHint.Text = Loc.T("need.printer.hint");
+        SavedTitle.Text = Loc.T("saved.title");
+        SavedHint.Text = _saved.Count == 0 ? Loc.T("saved.empty") : "";
+        SavedHint.Visibility = _saved.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         PreviewTitle.Text = Loc.T("preview.live");
         SizeTitle.Text = Loc.T("size");
         WidthLabel.Content = Loc.T("width");
@@ -99,20 +126,20 @@ public partial class MainWindow : Window
         ProtocolLabel.Content = Loc.T("protocol");
         DensityLabel.Content = Loc.T("density");
         CopiesLabel.Content = Loc.T("copies");
-        LangEn.Content = Loc.T("lang.en");
-        LangKa.Content = Loc.T("lang.ka");
         LangEn.Background = (Brush)FindResource(Loc.IsGeorgian ? "PanelAlt" : "AccentSoft");
         LangKa.Background = (Brush)FindResource(Loc.IsGeorgian ? "AccentSoft" : "PanelAlt");
 
         FillCombo(SizePreset, [
-            ("ORICO S1 — 57×30", "57,30"),
+            ("57×30", "57,30"),
             ("57×40", "57,40"),
             ("57×50", "57,50"),
             ("57×80", "57,80"),
             ("40×30", "40,30"),
             ("57×100", "57,100")
         ]);
-        FillCombo(PaperBox, [Loc.T("paper.gap"), Loc.T("paper.cont")]);
+        FillCombo(FontSizeBox, ["12", "14", "16", "18", "20", "24", "28", "32", "36", "42", "48"]);
+        if (FontSizeBox.SelectedIndex < 0) FontSizeBox.SelectedIndex = 4;
+        FillCombo(PaperBox, [Loc.T("paper.cont"), Loc.T("paper.gap")]);
         FillCombo(ProtocolBox, [
             Loc.T("proto.auto"), Loc.T("proto.luck"), Loc.T("proto.escpos"),
             Loc.T("proto.cat"), Loc.T("proto.tspl")
@@ -125,22 +152,21 @@ public partial class MainWindow : Window
             (Loc.T("head.576"), "576"),
             (Loc.T("head.native"), "0")
         ]);
-        if (PaperBox.SelectedIndex < 0) PaperBox.SelectedIndex = 1;
+        if (PaperBox.SelectedIndex < 0) PaperBox.SelectedIndex = 0;
 
-        foreach (var row in _templates)
+        foreach (var row in _layouts.Concat(_saved))
             row.Refresh();
-        HintText.Text = Current is null ? "" : Current.Hint;
-        if (string.IsNullOrWhiteSpace(BodyBox.Text) || BodyBox.Text == _lastSample)
+        HintText.Text = CurrentLayout is null ? "" : CurrentLayout.Hint;
+        var plain = GetBodyText();
+        if (string.IsNullOrWhiteSpace(plain) || plain == _lastSample)
         {
-            BodyBox.Text = Loc.T("sample");
-            _lastSample = BodyBox.Text;
+            SetBodyText(Loc.T("sample"));
+            _lastSample = Loc.T("sample");
         }
         foreach (var d in _allDevices.Where(x => x.IsSerial))
             d.Name = Loc.T("comPort", d.ComPort ?? "");
         RefreshDeviceList();
         UpdateConnectionChip();
-        if (_transport is null && (StatusText.Text.Length == 0 || StatusText.Tag is null))
-            StatusText.Text = Loc.T("status.disconnected");
         _suppressUi = false;
         RefreshPreview();
     }
@@ -178,15 +204,41 @@ public partial class MainWindow : Window
         box.SelectedIndex = Math.Max(0, items.ToList().FindIndex(x => x.Tag == tag));
     }
 
-    private TemplateRow? Current => TemplateList.SelectedItem as TemplateRow;
-
     private void SetDisconnectedUi()
     {
         _transport = null;
         _connectedName = null;
         UpdateConnectionChip();
-        PrintButton.IsEnabled = false;
+        ShowWorkspace(false);
+        PrinterPane.Visibility = Visibility.Visible;
+        SavedPane.Visibility = Visibility.Collapsed;
+        DisconnectButton.Visibility = BackToSavedButton.Visibility = Visibility.Collapsed;
         StatusText.Text = Loc.T("status.disconnected");
+    }
+
+    private void ShowWorkspace(bool on)
+    {
+        ConnectPrompt.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
+        EditorCard.Visibility = PreviewCard.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        if (on)
+        {
+            PrinterPane.Visibility = Visibility.Collapsed;
+            SavedPane.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void ShowDevices_Click(object sender, RoutedEventArgs e)
+    {
+        SavedPane.Visibility = Visibility.Collapsed;
+        PrinterPane.Visibility = Visibility.Visible;
+        DisconnectButton.Visibility = Visibility.Visible;
+        BackToSavedButton.Visibility = Visibility.Visible;
+    }
+
+    private void BackToSaved_Click(object sender, RoutedEventArgs e)
+    {
+        PrinterPane.Visibility = Visibility.Collapsed;
+        SavedPane.Visibility = Visibility.Visible;
     }
 
     private void UpdateConnectionChip()
@@ -195,7 +247,7 @@ public partial class MainWindow : Window
         ConnChip.Background = (Brush)FindResource(on ? "OkSoft" : "DangerSoft");
         ConnIcon.Text = on ? "\uE8FB" : "\uE8F8";
         ConnIcon.Foreground = ConnLabel.Foreground = (Brush)FindResource(on ? "Ok" : "Danger");
-            ConnLabel.Text = on
+        ConnLabel.Text = on
             ? Loc.T("status.connectedNamed", _connectedName ?? "")
             : Loc.T("status.disconnected");
         PrintButton.IsEnabled = on;
@@ -216,24 +268,44 @@ public partial class MainWindow : Window
         _settings.Save();
     }
 
-    private void TemplateList_Changed(object sender, SelectionChangedEventArgs e)
+    private void Issue_Click(object sender, RoutedEventArgs e)
     {
-        if (_suppressUi || Current is null) return;
-        HintText.Text = Current.Hint;
-        if (!Current.Model.IsBuiltIn)
+        Process.Start(new ProcessStartInfo
         {
-            BodyBox.Text = Current.Model.Body;
-            WidthBox.Text = Current.Model.WidthMm.ToString(CultureInfo.InvariantCulture);
-            HeightBox.Text = Current.Model.HeightMm.ToString(CultureInfo.InvariantCulture);
-            PaperBox.SelectedIndex = Current.Model.PaperIndex;
-            DensityBox.Text = Current.Model.Density.ToString(CultureInfo.InvariantCulture);
-        }
+            FileName = "https://github.com/giulbaziani/MiniPrinter/issues/new",
+            UseShellExecute = true
+        });
+    }
+
+    private void LayoutList_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressUi || CurrentLayout is null) return;
+        HintText.Text = CurrentLayout.Hint;
+        WidthBox.Text = CurrentLayout.Model.WidthMm.ToString(CultureInfo.InvariantCulture);
+        HeightBox.Text = CurrentLayout.Model.HeightMm.ToString(CultureInfo.InvariantCulture);
+        RefreshPreview();
+    }
+
+    private void SavedList_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressUi || CurrentSaved is null) return;
+        var m = CurrentSaved.Model;
+        if (!string.IsNullOrWhiteSpace(m.BodyXaml))
+            SetBodyXaml(m.BodyXaml);
         else
-        {
-            WidthBox.Text = Current.Model.WidthMm.ToString(CultureInfo.InvariantCulture);
-            HeightBox.Text = Current.Model.HeightMm.ToString(CultureInfo.InvariantCulture);
-        }
-        DeleteTemplateButton.IsEnabled = Current is { Model.IsBuiltIn: false };
+            SetBodyText(m.Body);
+        WidthBox.Text = m.WidthMm.ToString(CultureInfo.InvariantCulture);
+        HeightBox.Text = m.HeightMm.ToString(CultureInfo.InvariantCulture);
+        PaperBox.SelectedIndex = m.PaperIndex;
+        DensityBox.Text = m.Density.ToString(CultureInfo.InvariantCulture);
+        LayoutList.SelectedItem = _layouts.FirstOrDefault(x => x.Model.Layout == m.Layout) ?? LayoutList.SelectedItem;
+        _imagePath = TemplateStore.ResolveImage(m.ImageFileName);
+        ImageHint.Text = _imagePath is null ? Loc.T("image.hint") : Loc.T("image.loaded", Path.GetFileName(_imagePath));
+        SelectFontSize(m.FontSize);
+        BoldBtn.IsChecked = m.Bold;
+        ItalicBtn.IsChecked = m.Italic;
+        UnderlineBtn.IsChecked = m.Underline;
+        ApplyEditorFont();
         RefreshPreview();
     }
 
@@ -258,8 +330,14 @@ public partial class MainWindow : Window
     {
         BusyOverlay.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         BusyText.Text = message ?? "";
+        if (Resources["BusySpin"] is Storyboard spin)
+        {
+            if (on) spin.Begin(this, true);
+            else spin.Stop(this);
+        }
         ScanButton.IsEnabled = ConnectButton.IsEnabled = DisconnectButton.IsEnabled = !on;
-        ShowAllBox.IsEnabled = PrintButton.IsEnabled = SaveTemplateButton.IsEnabled = !on && (!on || _transport is not null);
+        ShowAllBox.IsEnabled = PrintButton.IsEnabled = SaveTemplateButton.IsEnabled = !on;
+        OpenImageButton.IsEnabled = ClearImageButton.IsEnabled = !on;
         if (!on)
             PrintButton.IsEnabled = _transport is not null;
     }
@@ -312,6 +390,7 @@ public partial class MainWindow : Window
                 : await BlePrinterTransport.ConnectAsync(device.BluetoothAddress, CancellationToken.None);
             _connectedName = device.Name;
             UpdateConnectionChip();
+            ShowWorkspace(true);
             StatusText.Text = Loc.T("status.connectedNamed", device.Name);
         }
         catch (Exception ex)
@@ -350,7 +429,7 @@ public partial class MainWindow : Window
             var job = new LabelJob
             {
                 Bitmap = bmp,
-                Paper = PaperBox.SelectedIndex == 0 ? PaperKind.Gap : PaperKind.Continuous,
+                Paper = PaperBox.SelectedIndex == 1 ? PaperKind.Gap : PaperKind.Continuous,
                 Density = ParseInt(DensityBox.Text, 3),
                 Copies = copies,
                 Protocol = (PrintProtocolKind)ProtocolBox.SelectedIndex
@@ -359,7 +438,7 @@ public partial class MainWindow : Window
             var payload = protocol.BuildJob(job);
             StatusText.Text = Loc.T("status.printing", Loc.Protocol(protocol.Kind));
             for (var i = 0; i < copies; i++)
-                await _transport.WriteAsync(payload, chunkSize: 64, delayMs: 40, CancellationToken.None);
+                await _transport.WriteAsync(payload, chunkSize: 20, delayMs: 18, CancellationToken.None);
             await Task.Delay(400);
             StatusText.Text = Loc.T("status.printed");
         }
@@ -374,34 +453,62 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OpenImage_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Filter = "Images|*.png;*.jpg;*.jpeg;*.bmp;*.gif|All|*.*"
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        _imagePath = dlg.FileName;
+        ImageHint.Text = Loc.T("image.loaded", Path.GetFileName(_imagePath));
+        RefreshPreview();
+    }
+
+    private void ClearImage_Click(object sender, RoutedEventArgs e)
+    {
+        _imagePath = null;
+        ImageHint.Text = Loc.T("image.hint");
+        RefreshPreview();
+    }
+
     private void SaveTemplate_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new SaveTemplateWindow(Current?.DisplayName) { Owner = this };
+        var dlg = new SaveTemplateWindow(CurrentSaved?.DisplayName ?? CurrentLayout?.DisplayName) { Owner = this };
         if (dlg.ShowDialog() != true) return;
         var saved = new SavedTemplate
         {
             Name = dlg.TemplateName,
-            Layout = Current?.Model.Layout ?? LayoutKind.Custom,
+            Layout = CurrentLayout?.Model.Layout ?? LayoutKind.Custom,
             WidthMm = ParseDouble(WidthBox.Text, 57),
             HeightMm = ParseDouble(HeightBox.Text, 30),
-            Body = BodyBox.Text,
+            Body = GetBodyText(),
+            BodyXaml = GetBodyXaml(),
             PaperIndex = Math.Max(0, PaperBox.SelectedIndex),
             Density = ParseInt(DensityBox.Text, 3),
-            Icon = Current?.Model.Icon ?? "\uE8A5"
+            Icon = CurrentLayout?.Model.Icon ?? "\uE8A5",
+            ImageFileName = TemplateStore.CopyImage(_imagePath ?? ""),
+            FontSize = CurrentFontSize(),
+            Bold = BoldBtn.IsChecked == true,
+            Italic = ItalicBtn.IsChecked == true,
+            Underline = UnderlineBtn.IsChecked == true
         };
         var row = new TemplateRow(saved);
-        _templates.Add(row);
-        TemplateStore.Save(_templates.Select(t => t.Model));
-        TemplateList.SelectedItem = row;
+        _saved.Add(row);
+        TemplateStore.Save(_saved.Select(t => t.Model));
+        SavedList.SelectedItem = row;
+        SavedHint.Visibility = Visibility.Collapsed;
         StatusText.Text = Loc.T("status.saved");
     }
 
     private void DeleteTemplate_Click(object sender, RoutedEventArgs e)
     {
-        if (Current is null || Current.Model.IsBuiltIn) return;
-        _templates.Remove(Current);
-        TemplateStore.Save(_templates.Select(t => t.Model));
-        TemplateList.SelectedIndex = 0;
+        if (CurrentSaved is null) return;
+        _saved.Remove(CurrentSaved);
+        TemplateStore.Save(_saved.Select(t => t.Model));
+        SavedList.SelectedIndex = _saved.Count > 0 ? 0 : -1;
+        SavedHint.Text = _saved.Count == 0 ? Loc.T("saved.empty") : "";
+        SavedHint.Visibility = _saved.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         StatusText.Text = Loc.T("status.deleted");
     }
 
@@ -416,6 +523,129 @@ public partial class MainWindow : Window
     }
 
     private void Preview_Changed(object sender, RoutedEventArgs e) => RefreshPreview();
+
+    private void Font_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressUi) return;
+        var sel = BodyBox.Selection;
+        if (sender == FontSizeBox || ReferenceEquals(e.OriginalSource, FontSizeBox))
+            sel.ApplyPropertyValue(TextElement.FontSizeProperty, (double)CurrentFontSize());
+        if (sender == BoldBtn)
+            sel.ApplyPropertyValue(TextElement.FontWeightProperty,
+                BoldBtn.IsChecked == true ? FontWeights.Bold : FontWeights.Normal);
+        if (sender == ItalicBtn)
+            sel.ApplyPropertyValue(TextElement.FontStyleProperty,
+                ItalicBtn.IsChecked == true ? FontStyles.Italic : FontStyles.Normal);
+        if (sender == UnderlineBtn)
+            sel.ApplyPropertyValue(Inline.TextDecorationsProperty,
+                UnderlineBtn.IsChecked == true ? TextDecorations.Underline : null);
+        BodyBox.Focus();
+        RefreshPreview();
+    }
+
+    private void Body_SelectionChanged(object sender, RoutedEventArgs e)
+    {
+        if (_suppressUi) return;
+        _suppressUi = true;
+        var weight = BodyBox.Selection.GetPropertyValue(TextElement.FontWeightProperty);
+        BoldBtn.IsChecked = weight is FontWeight fw && fw == FontWeights.Bold;
+        var style = BodyBox.Selection.GetPropertyValue(TextElement.FontStyleProperty);
+        ItalicBtn.IsChecked = style is FontStyle fs && fs == FontStyles.Italic;
+        var dec = BodyBox.Selection.GetPropertyValue(Inline.TextDecorationsProperty);
+        UnderlineBtn.IsChecked = dec is TextDecorationCollection td && td.Count > 0;
+        _suppressUi = false;
+    }
+
+    private void ApplyEditorFont()
+    {
+        BodyBox.FontSize = CurrentFontSize();
+    }
+
+    private string GetBodyText()
+    {
+        var range = new TextRange(BodyBox.Document.ContentStart, BodyBox.Document.ContentEnd);
+        return range.Text.TrimEnd('\r', '\n');
+    }
+
+    private void SetBodyText(string text)
+    {
+        BodyBox.Document.Blocks.Clear();
+        var p = new Paragraph(new Run(text)) { FontSize = CurrentFontSize(), Margin = new Thickness(0) };
+        BodyBox.Document.Blocks.Add(p);
+    }
+
+    private string GetBodyXaml()
+    {
+        return XamlWriter.Save(BodyBox.Document);
+    }
+
+    private void SetBodyXaml(string xaml)
+    {
+        try
+        {
+            if (XamlReader.Parse(xaml) is FlowDocument doc)
+                BodyBox.Document = doc;
+            else
+                SetBodyText("");
+        }
+        catch
+        {
+            SetBodyText("");
+        }
+    }
+
+    private List<TextSpan> CollectBodySpans()
+    {
+        var spans = new List<TextSpan>();
+        foreach (var block in BodyBox.Document.Blocks)
+        {
+            if (block is not Paragraph para) continue;
+            if (spans.Count > 0)
+                spans.Add(new TextSpan { Text = "\n" });
+            CollectInlines(para.Inlines, spans);
+        }
+        return spans;
+    }
+
+    private static void CollectInlines(InlineCollection inlines, List<TextSpan> spans)
+    {
+        foreach (var inline in inlines)
+        {
+            if (inline is Run run && run.Text.Length > 0)
+            {
+                spans.Add(new TextSpan
+                {
+                    Text = run.Text,
+                    Bold = run.FontWeight == FontWeights.Bold,
+                    Italic = run.FontStyle == FontStyles.Italic,
+                    Underline = run.TextDecorations is { Count: > 0 }
+                });
+            }
+            else if (inline is LineBreak)
+                spans.Add(new TextSpan { Text = "\n" });
+            else if (inline is Span nested)
+                CollectInlines(nested.Inlines, spans);
+        }
+    }
+
+    private int CurrentFontSize()
+    {
+        var text = FontSizeBox.SelectedItem as string ?? FontSizeBox.Text;
+        return ParseInt(text, 18);
+    }
+
+    private void SelectFontSize(int size)
+    {
+        for (var i = 0; i < FontSizeBox.Items.Count; i++)
+        {
+            if (FontSizeBox.Items[i] is string s && s == size.ToString(CultureInfo.InvariantCulture))
+            {
+                FontSizeBox.SelectedIndex = i;
+                return;
+            }
+        }
+        FontSizeBox.Text = size.ToString(CultureInfo.InvariantCulture);
+    }
 
     private void RefreshPreview()
     {
@@ -436,21 +666,38 @@ public partial class MainWindow : Window
     {
         var w = ParseDouble(WidthBox.Text, 57);
         var h = ParseDouble(HeightBox.Text, 30);
-        var layout = Current?.Model.Layout ?? LayoutKind.Plain;
         var head = 384;
         if (HeadBox.SelectedItem is ComboBoxItem hi && hi.Tag is string tag)
             int.TryParse(tag, out head);
-        return LabelRenderer.Render(w, h, 203, LabelTemplates.Build(layout, BodyBox.Text), head);
+        if (!string.IsNullOrEmpty(_imagePath) && File.Exists(_imagePath))
+            return LabelRenderer.RenderImage(_imagePath, w, h, 203, head);
+        var layout = CurrentLayout?.Model.Layout ?? LayoutKind.Plain;
+        var plain = GetBodyText();
+        var content = LabelTemplates.Build(layout, plain);
+        var size = CurrentFontSize();
+        content.BodySize = size;
+        if (content.TitleSize < size) content.TitleSize = size;
+        content.BodySpans = CollectBodySpans();
+        if (content.BodySpans.Count > 0)
+        {
+            content.Body = string.Concat(content.BodySpans.Select(s => s.Text));
+            if (string.IsNullOrEmpty(content.QrPayload) && string.IsNullOrEmpty(content.BarcodePayload))
+            {
+                content.Title = "";
+                content.Footer = "";
+            }
+        }
+        return LabelRenderer.Render(w, h, 203, content, head);
     }
 
     private void Persist()
     {
         _settings.Language = Loc.Language;
-        _settings.LastTemplateId = Current?.Model.Id ?? "plain";
+        _settings.LastTemplateId = CurrentSaved?.Model.Id ?? CurrentLayout?.Model.Id ?? "plain";
         _settings.WidthMm = ParseDouble(WidthBox.Text, 57);
         _settings.HeightMm = ParseDouble(HeightBox.Text, 30);
         _settings.Save();
-        TemplateStore.Save(_templates.Select(t => t.Model));
+        TemplateStore.Save(_saved.Select(t => t.Model));
     }
 
     private static int ParseInt(string text, int fallback) =>
@@ -466,7 +713,8 @@ public sealed class TemplateRow : System.ComponentModel.INotifyPropertyChanged
     public SavedTemplate Model { get; }
     public string Icon => Model.Icon;
     public string DisplayName => Model.IsBuiltIn ? Loc.T(LabelTemplates.TitleKey(Model.Layout)) : Model.Name;
-    public string Hint => Model.IsBuiltIn ? Loc.T(LabelTemplates.HintKey(Model.Layout)) : Loc.T("templates.hint");
+    public string Hint => Model.IsBuiltIn ? Loc.T(LabelTemplates.HintKey(Model.Layout)) : Loc.T("saved.hint");
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     public void Refresh() => PropertyChanged?.Invoke(this, new(nameof(DisplayName)));
+    public override string ToString() => DisplayName;
 }

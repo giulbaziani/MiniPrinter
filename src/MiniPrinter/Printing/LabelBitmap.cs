@@ -1,3 +1,6 @@
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+
 namespace MiniPrinter.Printing;
 
 public sealed class LabelBitmap
@@ -23,6 +26,17 @@ public sealed class LabelBitmap
         for (var i = 0; i < PackedMsbFirst.Length; i++)
             output[i] = ReverseBits(PackedMsbFirst[i]);
         return output;
+    }
+
+    public BitmapSource ToBitmapSource()
+    {
+        var pixels = new byte[WidthDots * HeightDots];
+        for (var y = 0; y < HeightDots; y++)
+        for (var x = 0; x < WidthDots; x++)
+            pixels[y * WidthDots + x] = Pixel(x, y) ? (byte)0 : (byte)255;
+        var bmp = BitmapSource.Create(WidthDots, HeightDots, 96, 96, PixelFormats.Gray8, null, pixels, WidthDots);
+        bmp.Freeze();
+        return bmp;
     }
 
     public bool Pixel(int x, int y)

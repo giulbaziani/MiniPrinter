@@ -4,6 +4,19 @@
         Title="MiniPrinter" Icon="Assets/logo.ico" Height="820" Width="1240"
         MinHeight="700" MinWidth="1040"
         Background="{StaticResource Bg}">
+  <Window.Resources>
+    <Storyboard x:Key="BusySpin" RepeatBehavior="Forever">
+      <DoubleAnimation Storyboard.TargetName="BusyRing"
+                       Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                       From="0" To="360" Duration="0:0:0.9"/>
+      <DoubleAnimation Storyboard.TargetName="BusyDot1" Storyboard.TargetProperty="Opacity"
+                       From="0.25" To="1" Duration="0:0:0.45" AutoReverse="True"/>
+      <DoubleAnimation Storyboard.TargetName="BusyDot2" Storyboard.TargetProperty="Opacity"
+                       From="0.25" To="1" Duration="0:0:0.45" AutoReverse="True" BeginTime="0:0:0.15"/>
+      <DoubleAnimation Storyboard.TargetName="BusyDot3" Storyboard.TargetProperty="Opacity"
+                       From="0.25" To="1" Duration="0:0:0.45" AutoReverse="True" BeginTime="0:0:0.3"/>
+    </Storyboard>
+  </Window.Resources>
   <Grid>
   <DockPanel>
     <Border DockPanel.Dock="Top" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="18,12">
@@ -13,9 +26,8 @@
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
         <StackPanel Orientation="Horizontal">
-          <Border Width="40" Height="40" CornerRadius="10" Background="{StaticResource AccentSoft}" Margin="0,0,12,0">
-            <TextBlock Text="&#xE749;" FontFamily="{StaticResource Icons}" FontSize="20" Foreground="{StaticResource Accent}"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0"/>
+          <Border Width="40" Height="40" CornerRadius="10" Margin="0,0,12,0" ClipToBounds="True">
+            <Image Source="Assets/logo.png" Stretch="UniformToFill"/>
           </Border>
           <StackPanel VerticalAlignment="Center">
             <TextBlock x:Name="TitleLabel" FontSize="18" FontWeight="SemiBold"/>
@@ -30,8 +42,34 @@
               <TextBlock x:Name="ConnLabel" FontWeight="SemiBold" Foreground="{StaticResource Danger}" VerticalAlignment="Center"/>
             </StackPanel>
           </Border>
-          <Button x:Name="LangEn" Style="{StaticResource GhostButton}" Padding="10,6" Margin="0,0,6,0" Click="LangEn_Click"/>
-          <Button x:Name="LangKa" Style="{StaticResource GhostButton}" Padding="10,6" Click="LangKa_Click"/>
+          <Button x:Name="IssueButton" Style="{StaticResource GhostButton}" Padding="10,6" Margin="0,0,8,0" Click="Issue_Click"/>
+          <Button x:Name="LangEn" Style="{StaticResource GhostButton}" Padding="7,6" Margin="0,0,6,0" Click="LangEn_Click">
+            <Viewbox Width="34" Height="22">
+              <Canvas Width="60" Height="30" ClipToBounds="True">
+                <Rectangle Width="60" Height="30" Fill="#012169"/>
+                <Path Data="M0,0 L60,30 M60,0 L0,30" Stroke="White" StrokeThickness="10"/>
+                <Path Data="M0,0 L60,30 M60,0 L0,30" Stroke="#C8102E" StrokeThickness="4"/>
+                <Rectangle Canvas.Left="24" Width="12" Height="30" Fill="White"/>
+                <Rectangle Canvas.Top="9" Width="60" Height="12" Fill="White"/>
+                <Rectangle Canvas.Left="26" Width="8" Height="30" Fill="#C8102E"/>
+                <Rectangle Canvas.Top="11" Width="60" Height="8" Fill="#C8102E"/>
+              </Canvas>
+            </Viewbox>
+          </Button>
+          <Button x:Name="LangKa" Style="{StaticResource GhostButton}" Padding="7,6" Click="LangKa_Click">
+            <Viewbox Width="34" Height="22">
+              <Canvas Width="90" Height="60">
+                <Rectangle Width="90" Height="60" Fill="White"/>
+                <Rectangle Canvas.Left="38" Width="14" Height="60" Fill="#E8112D"/>
+                <Rectangle Canvas.Top="23" Width="90" Height="14" Fill="#E8112D"/>
+                <Path Stroke="#E8112D" StrokeThickness="3.2" StrokeStartLineCap="Flat" StrokeEndLineCap="Flat"
+                      Data="M14,15 H30 M22,7 V23 M14,11 V19 M30,11 V19 M18,7 H26 M18,23 H26
+                            M60,15 H76 M68,7 V23 M60,11 V19 M76,11 V19 M64,7 H72 M64,23 H72
+                            M14,45 H30 M22,37 V53 M14,41 V49 M30,41 V49 M18,37 H26 M18,53 H26
+                            M60,45 H76 M68,37 V53 M60,41 V49 M76,41 V49 M64,37 H72 M64,53 H72"/>
+              </Canvas>
+            </Viewbox>
+          </Button>
         </StackPanel>
       </Grid>
     </Border>
@@ -45,29 +83,58 @@
         <ColumnDefinition Width="340"/>
       </Grid.ColumnDefinitions>
 
-      <Border Grid.Column="0" Style="{StaticResource Card}">
-        <DockPanel>
-          <StackPanel DockPanel.Dock="Top">
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-              <TextBlock Text="&#xE702;" Style="{StaticResource Icon}" Foreground="{StaticResource Accent}"/>
-              <TextBlock x:Name="PrinterTitle" FontSize="16" FontWeight="SemiBold"/>
+      <Grid Grid.Column="0">
+        <Border x:Name="PrinterPane" Style="{StaticResource Card}">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Top">
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <TextBlock Text="&#xE702;" Style="{StaticResource Icon}" Foreground="{StaticResource Accent}"/>
+                <TextBlock x:Name="PrinterTitle" FontSize="16" FontWeight="SemiBold"/>
+              </StackPanel>
+              <TextBlock x:Name="PrinterHint" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+              <UniformGrid Columns="2" Margin="0,0,0,8">
+                <Button x:Name="ScanButton" Style="{StaticResource GhostButton}" Click="Scan_Click" Margin="0,0,6,0"/>
+                <Button x:Name="ConnectButton" Style="{StaticResource PrimaryButton}" Click="Connect_Click"/>
+              </UniformGrid>
+              <Button x:Name="DisconnectButton" Style="{StaticResource GhostButton}" Click="Disconnect_Click" Margin="0,0,0,8" Visibility="Collapsed"/>
+              <Button x:Name="BackToSavedButton" Style="{StaticResource PrimaryButton}" Click="BackToSaved_Click" Margin="0,0,0,8" Visibility="Collapsed"/>
+              <CheckBox x:Name="ShowAllBox" Margin="0,0,0,8" Click="ShowAll_Click"/>
+              <TextBlock x:Name="DevicesTitle" FontWeight="SemiBold" Margin="0,0,0,4"/>
+              <TextBlock x:Name="FilterHint" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,6" FontSize="12"/>
             </StackPanel>
-            <TextBlock x:Name="PrinterHint" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10"/>
-            <UniformGrid Columns="2" Margin="0,0,0,8">
-              <Button x:Name="ScanButton" Style="{StaticResource GhostButton}" Click="Scan_Click" Margin="0,0,6,0"/>
-              <Button x:Name="ConnectButton" Style="{StaticResource PrimaryButton}" Click="Connect_Click"/>
-            </UniformGrid>
-            <Button x:Name="DisconnectButton" Style="{StaticResource GhostButton}" Click="Disconnect_Click" Margin="0,0,0,8"/>
-            <CheckBox x:Name="ShowAllBox" Margin="0,0,0,8" Click="ShowAll_Click"/>
-            <TextBlock x:Name="DevicesTitle" FontWeight="SemiBold" Margin="0,0,0,4"/>
-            <TextBlock x:Name="FilterHint" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,6" FontSize="12"/>
-          </StackPanel>
-          <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Foreground="{StaticResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap"/>
-          <ListBox x:Name="DeviceList"/>
-        </DockPanel>
+            <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Foreground="{StaticResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap"/>
+            <ListBox x:Name="DeviceList"/>
+          </DockPanel>
+        </Border>
+        <Border x:Name="SavedPane" Style="{StaticResource Card}" Visibility="Collapsed">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Top">
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <TextBlock Text="&#xE8F1;" Style="{StaticResource Icon}" Foreground="{StaticResource Accent}"/>
+                <TextBlock x:Name="SavedTitle" FontSize="16" FontWeight="SemiBold"/>
+              </StackPanel>
+              <TextBlock x:Name="SavedHint" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+              <UniformGrid Columns="2" Margin="0,0,0,8">
+                <Button x:Name="ShowDevicesButton" Style="{StaticResource GhostButton}" Click="ShowDevices_Click" Margin="0,0,6,0"/>
+                <Button x:Name="DisconnectSavedButton" Style="{StaticResource GhostButton}" Click="Disconnect_Click"/>
+              </UniformGrid>
+            </StackPanel>
+            <Button x:Name="DeleteSavedButton" DockPanel.Dock="Bottom" Style="{StaticResource DangerButton}" Margin="0,10,0,0" Click="DeleteTemplate_Click"/>
+            <ListBox x:Name="SavedList" SelectionChanged="SavedList_Changed" DisplayMemberPath="DisplayName"/>
+          </DockPanel>
+        </Border>
+      </Grid>
+
+      <Border x:Name="ConnectPrompt" Grid.Column="2" Grid.ColumnSpan="3" Style="{StaticResource Card}">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="460">
+          <TextBlock Text="&#xE8F8;" FontFamily="{StaticResource Icons}" FontSize="42" Foreground="{StaticResource Accent}"
+                     HorizontalAlignment="Center" Margin="0,0,0,12"/>
+          <TextBlock x:Name="NeedPrinterTitle" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+          <TextBlock x:Name="NeedPrinterHint" Foreground="{StaticResource Muted}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0"/>
+        </StackPanel>
       </Border>
 
-      <Border Grid.Column="2" Style="{StaticResource Card}">
+      <Border x:Name="EditorCard" Grid.Column="2" Style="{StaticResource Card}" Visibility="Collapsed">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -81,29 +148,33 @@
             </StackPanel>
             <TextBlock x:Name="TemplatesHint" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"/>
             <TextBlock x:Name="TemplatesTitle" FontWeight="SemiBold" Margin="0,0,0,6"/>
-            <ListBox x:Name="TemplateList" Height="168" SelectionChanged="TemplateList_Changed">
-              <ListBox.ItemTemplate>
-                <DataTemplate>
-                  <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="{Binding Icon}" FontFamily="Segoe MDL2 Assets" FontSize="16" Margin="0,0,10,0" VerticalAlignment="Center" Foreground="#2B7FFF"/>
-                    <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"/>
-                  </StackPanel>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
-            <TextBlock x:Name="HintText" Foreground="{StaticResource Muted}" Margin="0,8,0,8" TextWrapping="Wrap"/>
+            <ComboBox x:Name="LayoutList" DisplayMemberPath="DisplayName" SelectionChanged="LayoutList_Changed" Margin="0,0,0,8"/>
+            <TextBlock x:Name="HintText" Foreground="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+              <Button x:Name="OpenImageButton" Style="{StaticResource GhostButton}" Click="OpenImage_Click" Margin="0,0,6,0"/>
+              <Button x:Name="ClearImageButton" Style="{StaticResource GhostButton}" Click="ClearImage_Click"/>
+            </StackPanel>
+            <TextBlock x:Name="ImageHint" Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"/>
             <TextBlock x:Name="TextTitle" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+              <ComboBox x:Name="FontSizeBox" Width="78" Margin="0,0,8,0" SelectionChanged="Font_Changed"/>
+              <ToggleButton x:Name="BoldBtn" Style="{StaticResource ToolToggle}" Content="B" FontWeight="Bold" Click="Font_Changed"/>
+              <ToggleButton x:Name="ItalicBtn" Style="{StaticResource ToolToggle}" Content="I" FontStyle="Italic" Click="Font_Changed"/>
+              <ToggleButton x:Name="UnderlineBtn" Style="{StaticResource ToolToggle}" Click="Font_Changed">
+                <TextBlock Text="U" TextDecorations="Underline"/>
+              </ToggleButton>
+            </StackPanel>
           </StackPanel>
-          <TextBox Grid.Row="1" x:Name="BodyBox" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontSize="16"/>
+          <RichTextBox Grid.Row="1" x:Name="BodyBox" VerticalScrollBarVisibility="Auto" FontSize="20"
+                       SelectionChanged="Body_SelectionChanged"/>
           <DockPanel Grid.Row="2" Margin="0,12,0,0">
             <Button x:Name="PrintButton" DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" FontSize="15" Padding="22,10" Click="Print_Click"/>
-            <Button x:Name="DeleteTemplateButton" DockPanel.Dock="Right" Style="{StaticResource DangerButton}" Margin="0,0,8,0" Click="DeleteTemplate_Click"/>
             <Button x:Name="SaveTemplateButton" Style="{StaticResource GhostButton}" HorizontalAlignment="Left" Click="SaveTemplate_Click"/>
           </DockPanel>
         </Grid>
       </Border>
 
-      <Border Grid.Column="4" Style="{StaticResource Card}">
+      <Border x:Name="PreviewCard" Grid.Column="4" Style="{StaticResource Card}" Visibility="Collapsed">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
@@ -114,7 +185,6 @@
               <Image x:Name="PreviewImage" Stretch="Uniform"/>
             </Border>
             <TextBlock x:Name="PreviewMeta" Foreground="{StaticResource Muted}" Margin="0,8,0,14" FontSize="12"/>
-
             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
               <TextBlock Text="&#xE91C;" Style="{StaticResource Icon}" Foreground="{StaticResource Accent}"/>
               <TextBlock x:Name="SizeTitle" FontSize="16" FontWeight="SemiBold"/>
@@ -162,11 +232,27 @@
       </Border>
     </Grid>
   </DockPanel>
-    <Border x:Name="BusyOverlay" Background="#AAF3F6FA" Visibility="Collapsed" Panel.ZIndex="20">
-      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-        <ProgressBar x:Name="BusyBar" IsIndeterminate="True" Width="240" Height="8"/>
-        <TextBlock x:Name="BusyText" Margin="0,14,0,0" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-      </StackPanel>
+    <Border x:Name="BusyOverlay" Background="#CCF3F6FA" Visibility="Collapsed" Panel.ZIndex="20">
+      <Border Background="White" CornerRadius="16" Padding="28,24" BorderBrush="{StaticResource Line}" BorderThickness="1"
+              HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel>
+          <Grid Width="56" Height="56" HorizontalAlignment="Center" Margin="0,0,0,14">
+            <Ellipse Stroke="#D5DEE8" StrokeThickness="5"/>
+            <Ellipse x:Name="BusyRing" Stroke="{StaticResource Accent}" StrokeThickness="5"
+                     StrokeDashArray="2.2 1.6" StrokeDashCap="Round" RenderTransformOrigin="0.5,0.5">
+              <Ellipse.RenderTransform>
+                <RotateTransform Angle="0"/>
+              </Ellipse.RenderTransform>
+            </Ellipse>
+          </Grid>
+          <TextBlock x:Name="BusyText" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,12,0,0">
+            <Ellipse x:Name="BusyDot1" Width="7" Height="7" Fill="{StaticResource Accent}" Margin="3" Opacity="0.25"/>
+            <Ellipse x:Name="BusyDot2" Width="7" Height="7" Fill="{StaticResource Accent}" Margin="3" Opacity="0.25"/>
+            <Ellipse x:Name="BusyDot3" Width="7" Height="7" Fill="{StaticResource Accent}" Margin="3" Opacity="0.25"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
     </Border>
   </Grid>
 </Window>

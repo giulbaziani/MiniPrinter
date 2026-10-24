@@ -20,6 +20,12 @@ public sealed class SavedTemplate
     public int PaperIndex { get; set; }
     public int Density { get; set; } = 3;
     public string Icon { get; set; } = "\uE8A5";
+    public string? ImageFileName { get; set; }
+    public int FontSize { get; set; } = 20;
+    public string? BodyXaml { get; set; }
+    public bool Bold { get; set; }
+    public bool Italic { get; set; }
+    public bool Underline { get; set; }
 }
 
 public static class LabelTemplates
