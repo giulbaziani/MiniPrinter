@@ -12,10 +12,26 @@
 <p align="center">
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT-2B7FFF.svg" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0F7B6C.svg" alt="Windows">
-  <img src="https://img.shields.io/badge/.NET-8.0-512BD4.svg" alt=".NET 8">
+  <a href="https://github.com/giulbaziani/MiniPrinter/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/release-v1.0.0-2B7FFF.svg" alt="v1.0.0"></a>
   <img src="https://img.shields.io/badge/Bluetooth-BLE%20%2B%20SPP-1C2430.svg" alt="Bluetooth">
   <img src="https://img.shields.io/badge/languages-English%20%2B%20Georgian-C62828.svg" alt="EN + KA">
 </p>
+
+<p align="center">
+  <a href="https://github.com/giulbaziani/MiniPrinter/releases/download/v1.0.0/MiniPrinter-1.0.0-win-x64-setup.exe"><strong>Download installer (Windows x64)</strong></a>
+</p>
+
+## Install
+
+[.NET is included](https://github.com/giulbaziani/MiniPrinter/releases/download/v1.0.0/MiniPrinter-1.0.0-win-x64-setup.exe) — you do not install a runtime separately.
+
+1. Download [MiniPrinter-1.0.0-win-x64-setup.exe](https://github.com/giulbaziani/MiniPrinter/releases/download/v1.0.0/MiniPrinter-1.0.0-win-x64-setup.exe)
+2. Run the installer (per-user, no administrator account)
+3. Optional desktop shortcut
+
+Windows 10 (2004+) or Windows 11, 64-bit, Bluetooth. Installs to `%LocalAppData%\Programs\MiniPrinter`.
+
+Release page: [v1.0.0](https://github.com/giulbaziani/MiniPrinter/releases/tag/v1.0.0)
 
 **MiniPrinter** is a desktop replacement for vendor phone apps such as Luck Jingle. It talks to pocket thermal printers that print **labels, name tags, price stickers, QR codes and barcodes** — including the **ORICO Mini Printer S1** and many OEM clones.
 
@@ -62,9 +78,9 @@ Tested target: **ORICO Mini Printer S1** (Luck Jingle app, ~57×30 mm, 203 dpi).
 
 ## Requirements
 
-- Windows 10 version 2004+ or Windows 11
-- Bluetooth adapter
-- [.NET 8 SDK](https://dotnet.microsoft.com/download) to build
+**To use the app:** Windows 10 (2004+) / 11, 64-bit, Bluetooth. No separate .NET install.
+
+**To build from source:** [.NET SDK](https://dotnet.microsoft.com/download) (same major version as the project).
 
 ## Build and run
 
