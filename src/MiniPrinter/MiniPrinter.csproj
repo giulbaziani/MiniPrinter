@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
+    <RootNamespace>MiniPrinter</RootNamespace>
+    <AssemblyName>MiniPrinter</AssemblyName>
+    <Version>1.0.0</Version>
+    <Product>MiniPrinter</Product>
+    <Authors>MiniPrinter contributors</Authors>
+    <Description>Open-source Windows app for Chinese Bluetooth mini thermal label printers (ORICO S1, Luck Jingle, ESC/POS, cat printers).</Description>
+    <PackageTags>bluetooth;thermal-printer;label-printer;escpos;orico;luck-jingle;sticker;windows;wpf</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Localization\en.json" />
+    <EmbeddedResource Include="Localization\ka.json" />
+    <Resource Include="Assets\logo.png" />
+    <Resource Include="Assets\logo.ico" />
+  </ItemGroup>
+</Project>
